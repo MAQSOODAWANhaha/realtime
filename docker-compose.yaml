@@ -2,8 +2,21 @@ version: '3.8'
 services:
   app:
     image: gghtrt520/realtime:latest
+    pull_policy: always
+    container_name: realtime-app
     ports:
       - "80:80"
       - "443:443"
     env_file:
       - .env
+    volumes:
+      # 挂载Caddy证书数据目录
+      - ./cert/data:/data
+      - ./cert/config:/config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
