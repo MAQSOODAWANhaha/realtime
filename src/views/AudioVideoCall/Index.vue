@@ -618,4 +618,22 @@ export default {
     }
   }
 }
+
+@media screen and (max-width: 768px) {
+  .experience {
+    &__content {
+      flex-direction: column;
+      height: auto;
+      overflow-y: auto;
+      padding: 0 16px;
+      box-sizing: border-box;
+    }
+    &__content__left {
+      width: 100%;
+    }
+    .show-tool-bar {
+      height: calc(100vh - 240px);
+    }
+  }
+}
 </style>

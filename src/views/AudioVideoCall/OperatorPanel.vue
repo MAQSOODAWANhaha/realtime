@@ -318,4 +318,12 @@ export default {
     }
   }
 }
+
+@media screen and (max-width: 768px) {
+  .operator-panel {
+    width: 100%;
+    border-left: none;
+    padding: 16px 0;
+  }
+}
 </style>
