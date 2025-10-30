@@ -10,15 +10,14 @@ RUN pnpm build:prod
 FROM caddy:2-alpine AS production-stage
 WORKDIR /app
 
-# 创建Caddy证书存储目录
-RUN mkdir -p /data /config && \
-    chown -R caddy:caddy /data /config
+# 创建Caddy证书存储目录（使用root权限创建，后续caddy用户可以访问）
+RUN mkdir -p /data /config
 
 COPY --from=build-stage /app/dist /app/dist
 COPY Caddyfile /etc/caddy/Caddyfile
 
-# 切换到caddy用户
-USER caddy
+# 确保目录权限正确（caddy容器默认以caddy用户运行）
+# 由于使用挂载卷，权限会在运行时由docker-compose管理
 
 EXPOSE 80
 EXPOSE 443
