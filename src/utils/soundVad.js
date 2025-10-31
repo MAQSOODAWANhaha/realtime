@@ -157,6 +157,11 @@ class SoundVadClass {
 
       // 定时检测音频数据
       this._analyserTimer = setInterval(() => {
+        // 检查分析器是否仍然有效
+        if (!this._streamAnalyser) {
+          return
+        }
+        
         this._streamAnalyser.getByteFrequencyData(dataArray)
         let sum = 0
         for (let i = 0; i < bufferLength; i++) {
@@ -181,10 +186,12 @@ class SoundVadClass {
 
   // 停止声音监听
   closeListen() {
-    // 释放VAD相关资源
+    // 先清除定时器，防止在清理过程中还在访问资源
     if (this._analyserTimer) {
       clearInterval(this._analyserTimer)
+      this._analyserTimer = null
     }
+    
     try {
       if (this._gainNode && this._scriptProcessorNode && this._destAudioNode) {
         // this._gainNode.disconnect(this._scriptProcessorNode)

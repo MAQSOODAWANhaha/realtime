@@ -3,6 +3,18 @@
     <div class="experience__header flex flex-between">
       <h3>互动体验</h3>
     </div>
+    <CallOverlay
+      :visible="showCallOverlay"
+      :callType="currentCallType"
+      :status="callStatus"
+      :duration="callDuration"
+      :enableAudio="enableAudio"
+      :enableVideo="enableVideo"
+      :isConnected="isConnected"
+      @onHangUp="handleOverlayHangUp"
+      @onToggleAudio="handleOverlayToggleAudio"
+      @onToggleVideo="handleOverlayToggleVideo"
+    />
     <div class="experience__content flex flex-x-between">
       <div class="experience__content__left">
         <!--对话消息框-->
@@ -29,8 +41,8 @@
           @onAudioData="audioData"
           @onListenAudioData="listenAudioData"
           @onVadStatus="vadStatus"
-          @onOpenAudio="enableAudio = true"
-          @onCloseAudio="enableAudio = false"
+          @onOpenAudio="handleOpenAudio"
+          @onCloseAudio="handleCloseAudio"
         />
       </div>
       <!--右侧参数配置面板-->
@@ -58,6 +70,7 @@ import { ref } from "vue";
 import MessageBox from "./MessageBox.vue";
 import ToolBar from "./ToolBar.vue";
 import OperatorPanel from "./OperatorPanel.vue";
+import CallOverlay from "./CallOverlay.vue";
 import {
   MEDIA_TYPE,
   MSG_TYPE,
@@ -88,6 +101,12 @@ export default {
       messageList: [], // 消息列表
       isConnecting: false, // 是否正在连接
       isConnected: false, // 是否已连接
+      showCallOverlay: false, // 是否显示通话遮罩
+      callDuration: 0, // 通话时长，秒
+      callStartAt: null, // 通话开始时间戳
+      callTimer: null, // 通话时长计时器
+      callStatus: "idle", // 通话状态
+      currentCallType: MEDIA_TYPE.AUDIO, // 当前通话类型
       // 右侧参数面板参数对象
       panelParams: {
         model: "", // 模型
@@ -147,6 +166,11 @@ export default {
         : CALL_MODE_TYPE.AUDIO; // 语音通话模式
     },
   },
+  computed: {
+    formattedCallDuration() {
+      return this.formatDuration(this.callDuration);
+    },
+  },
   methods: {
     // 服务响应返回输出方式
     responseTypeChange(value) {
@@ -159,11 +183,35 @@ export default {
           ? CALL_MODE_TYPE.AUDIO
           : CALL_MODE_TYPE.VIDEO_PASSIVE;
       this.panelParams.beta_fields.chat_mode = chatMode;
+      if (this.sock && this.sock.readyState === WebSocket.OPEN) {
+        this.currentCallType = mediaType;
+        if (this.isConnected) {
+          this.callStatus = "connected";
+        }
+        this.showCallOverlay = true;
+        return;
+      }
+      if (!this.apiKey) {
+        this.$message.warning("请输入APIKEY！");
+        return;
+      }
+      this.prepareCallOverlay(mediaType);
       this.openWS(mediaType);
     },
+    // 处理音频打开事件
+    handleOpenAudio() {
+      console.log('handleOpenAudio called, setting enableAudio to true');
+      this.enableAudio = true;
+    },
+    // 处理音频关闭事件
+    handleCloseAudio() {
+      console.log('handleCloseAudio called, setting enableAudio to false');
+      this.enableAudio = false;
+    },
     // 初始化websocket连接
-    openWS(mediaType = MEDIA_TYPE.AUDIO) {
-      // 创建 SockJS 连接
+    openWS(mediaType) {
+      const targetMediaType = mediaType || this.currentCallType || MEDIA_TYPE.AUDIO;
+      // 创建 WebSocket 连接
       if (!this.apiKey) {
         this.$message.warning("请输入APIKEY！");
         return;
@@ -172,6 +220,12 @@ export default {
         console.log("WebSocket 连接已经打开");
         return;
       }
+      this.currentCallType = targetMediaType;
+      if (!this.showCallOverlay) {
+        this.prepareCallOverlay(targetMediaType);
+      } else {
+        this.callStatus = "connecting";
+      }
       this.isConnecting = true;
       this.isConnected = false;
 
@@ -179,40 +233,145 @@ export default {
       const proxyPath = ref(import.meta.env.VITE_APP_PROXY_PATH);
       const url = `${domain.value}${proxyPath.value}/v4/realtime?Authorization=${this.apiKey}`;
 
-      // 创建 WebSocket 连接
       this.sock = new WebSocket(url);
 
-      // 监听连接打开事件
       this.sock.onopen = () => {
         this.isConnecting = false;
         this.isConnected = true;
         this.isShowToolBar = true; // 显示工具栏
+        this.handleCallConnected();
         console.log("%c Connection opened", "color: #ff59ff");
       };
-      // 监听收到消息事件
       this.sock.onmessage = (e) => {
-        // console.log('%c 收到消息：', 'color: #ff59ff', e.data)
-        this.handleWsResponse(e.data, mediaType); // 处理返回消息
+        this.handleWsResponse(e.data, targetMediaType); // 处理返回消息
       };
-      // 监听连接关闭事件
       this.sock.onclose = () => {
         this.isConnected = false;
         this.currentAudioBlob = null;
         this.currentVideoBlob = null;
+        this.sock = null;
+        this.handleCallClosed();
         console.log("%c Connection closed", "color: #ff59ff");
       };
-      // 监听连接错误事件
-      this.sock.onerror = (e) => {
+      this.sock.onerror = () => {
         this.isConnecting = false;
         this.isConnected = false;
         this.$message.error("连接出错！");
+        this.sock = null;
+        this.handleCallClosed();
         console.log("%c Connection onerror", "color: #ff59ff");
       };
+    },
+    // 初始化通话遮罩状态
+    prepareCallOverlay(mediaType = MEDIA_TYPE.AUDIO) {
+      this.currentCallType = mediaType;
+      this.callStatus = "connecting";
+      this.showCallOverlay = true;
+      this.callDuration = 0;
+      this.stopCallTimer();
+      this.callStartAt = null;
+      this.isShowToolBar = true; // 确保 ToolBar 被渲染，以便可以访问其方法
+    },
+    // 通话建立成功
+    handleCallConnected() {
+      this.callStatus = "connected";
+      this.startCallTimer();
+    },
+    // 通话结束或异常（由 WebSocket 自动触发）
+    handleCallClosed() {
+      this.stopCallTimer();
+      this.callStatus = "idle";
+      this.callDuration = 0;
+      this.showCallOverlay = false;
+      this.callStartAt = null;
+      // 保留 isShowToolBar = true，这样用户可以看到历史消息和工具栏
+      // 保留 messageList，显示历史消息
+      // 注意：不重置 enableAudio 和 enableVideo，保持上次状态
+    },
+    // 开始计时
+    startCallTimer() {
+      this.stopCallTimer();
+      this.callStartAt = Date.now();
+      this.callTimer = setInterval(() => {
+        this.callDuration = Math.floor((Date.now() - this.callStartAt) / 1000);
+      }, 1000);
+    },
+    // 停止计时
+    stopCallTimer() {
+      if (this.callTimer) {
+        clearInterval(this.callTimer);
+        this.callTimer = null;
+      }
+    },
+    // 通话挂断
+    handleOverlayHangUp() {
+      console.log('handleOverlayHangUp called');
+      // 先隐藏遮罩层，返回 MessageBox 页面显示历史记录
+      this.showCallOverlay = false;
+      
+      // 断开连接
+      if (this.$refs.refToolBar && typeof this.$refs.refToolBar.handleDisconnect === "function") {
+        this.$refs.refToolBar.handleDisconnect();
+      } else {
+        this.closeWS();
+      }
+      
+      // 停止计时器并重置通话状态
+      this.stopCallTimer();
+      this.callStatus = "idle";
+      this.callDuration = 0;
+      this.callStartAt = null;
+      
+      // 关闭音频和视频
+      this.enableAudio = false;
+      this.enableVideo = false;
+      
+      // 保留 isShowToolBar = true，这样用户可以看到历史消息和工具栏
+      // 保留 messageList，显示历史消息
+    },
+    // 切换音频
+    handleOverlayToggleAudio() {
+      console.log('handleOverlayToggleAudio called, current enableAudio:', this.enableAudio);
+      this.$nextTick(() => {
+        if (this.$refs.refToolBar && typeof this.$refs.refToolBar.handleAudio === "function") {
+          this.$refs.refToolBar.handleAudio();
+        }
+      });
+    },
+    // 切换视频或屏幕共享
+    handleOverlayToggleVideo() {
+      this.$nextTick(() => {
+        if (!this.$refs.refToolBar) return;
+        if (this.enableVideo && typeof this.$refs.refToolBar.closeVideoOrScreen === "function") {
+          this.$refs.refToolBar.closeVideoOrScreen();
+          return;
+        }
+        if (typeof this.$refs.refToolBar.openVideoOrScreen === "function") {
+          const targetType =
+            this.currentCallType === MEDIA_TYPE.SCREEN ? MEDIA_TYPE.SCREEN : MEDIA_TYPE.VIDEO;
+          this.$refs.refToolBar.openVideoOrScreen(targetType);
+        }
+      });
+    },
+    // 通用时长格式化
+    formatDuration(seconds) {
+      const safeSeconds = Number.isFinite(seconds) ? seconds : 0;
+      const mins = Math.floor(safeSeconds / 60)
+        .toString()
+        .padStart(2, "0");
+      const secs = Math.floor(safeSeconds % 60)
+        .toString()
+        .padStart(2, "0");
+      return `${mins}:${secs}`;
     },
     // 断开websocket连接
     closeWS() {
       // 关闭连接
-      if (this.sock && this.sock.readyState === WebSocket.OPEN) {
+      if (
+        this.sock &&
+        (this.sock.readyState === WebSocket.OPEN ||
+          this.sock.readyState === WebSocket.CONNECTING)
+      ) {
         this.sock.close();
         this.sock = null;
       }
@@ -499,6 +658,7 @@ export default {
     /** ********************************************** 媒体交互 ******************************************/
     // 首次打开对应的媒体
     firstOpenMedia(mediaType) {
+      console.log('firstOpenMedia called, mediaType:', mediaType, 'enableAudio:', this.enableAudio);
       if (mediaType === MEDIA_TYPE.AUDIO) {
         this.$refs.refToolBar.handleAudio();
       } else {
@@ -512,10 +672,30 @@ export default {
     },
     // 工具条发起，清空消息并重新连接
     clearAndConnect() {
+      console.log('clearAndConnect called');
       this.isFirstOpenMedia = true; // 重置首次打开媒体
       this.clearObjectURL(); // 清空残留对象url
       this.messageList = []; // 清空消息
-      this.openWS(); // 从快捷键打开，初始化websocket连接
+      
+      // 重置音视频状态
+      console.log('clearAndConnect: resetting enableAudio and enableVideo to false');
+      this.enableAudio = false;
+      this.enableVideo = false;
+      
+      if (!this.apiKey) {
+        this.$message.warning("请输入APIKEY！");
+        return;
+      }
+      // 确保旧连接完全关闭
+      this.closeWS();
+      
+      const mediaType = this.currentCallType || MEDIA_TYPE.AUDIO;
+      this.prepareCallOverlay(mediaType);
+      
+      // 等待一下确保 socket 完全关闭后再建立新连接
+      this.$nextTick(() => {
+        this.openWS(mediaType);
+      });
     },
     // 视频组件发起，打开视频或屏幕共享成功
     openVideoOrScreenSuccess() {
@@ -571,6 +751,7 @@ export default {
     },
   },
   beforeDestroy() {
+    this.stopCallTimer();
     this.clearObjectURL(); // 清空残留对象url
     this.closeWS(); // 关闭websocket连接
   },
@@ -578,6 +759,7 @@ export default {
     MessageBox,
     ToolBar,
     OperatorPanel,
+    CallOverlay,
   },
 };
 </script>

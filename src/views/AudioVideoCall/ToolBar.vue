@@ -287,12 +287,17 @@ export default {
     },
     // 开关录音
     handleAudio() {
+      console.log('ToolBar.handleAudio called, currentAudioStatus:', this.currentAudioStatus);
       if (this.currentAudioStatus === this.mediaStatus.CLOSED) {
+        console.log('ToolBar.handleAudio: starting record (emitting onOpenAudio)');
         this.startRecordVad(); // 打开录音监听
         this.$emit("onOpenAudio");
       } else if (this.currentAudioStatus === this.mediaStatus.OPENED) {
+        console.log('ToolBar.handleAudio: stopping record (emitting onCloseAudio)');
         this.stopRecordVad(); // 停止录音监听
         this.$emit("onCloseAudio");
+      } else {
+        console.log('ToolBar.handleAudio: currentAudioStatus is neither CLOSED nor OPENED, status:', this.currentAudioStatus);
       }
     },
     // 开启视频或屏幕
