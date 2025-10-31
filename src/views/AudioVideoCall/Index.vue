@@ -105,7 +105,7 @@ export default {
             content: "您好！我是智能助理彤彤，请问有什么可以帮您？",
           },
         },
-        voice: MODEL_TIMBRE.TONGTONG, // 模型音色
+        voice: MODEL_TIMBRE.XIAOCHEN, // 模型音色
         output_audio_format: "pcm", // 音频输出格式，支持mp3、pcm
         input_audio_format: "wav", // 音频输入格式，支持wav；
         tools: [], // 工具列表

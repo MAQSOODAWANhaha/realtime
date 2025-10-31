@@ -230,36 +230,85 @@ export default {
         &:not(:last-child) {
           margin-bottom: 32px;
         }
-        .el-image {
-          :deep(.el-image__inner) {
-            width: 24px;
-            height: 24px;
-            margin-right: 12px;
-            margin-top: 6px;
+        
+        // 用户消息 - 右对齐
+        &.client {
+          flex-direction: row-reverse;
+          .el-image {
+            :deep(.el-image__inner) {
+              width: 24px;
+              height: 24px;
+              margin-left: 12px;
+              margin-right: 0;
+              margin-top: 6px;
+            }
+          }
+          .flex1 {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+          }
+          video {
+            width: 316px;
+            border-radius: 8px;
+            display: block;
+          }
+          :deep(.audio-box) {
+            width: 300px;
+          }
+          p {
+            margin-top: 8px;
+            border-radius: 8px;
+            background: #134cff;
+            color: #fff;
+            font-size: 14px;
+            line-height: 24px;
+            padding: 8px 12px;
+            text-align: left;
+            max-width: 100%;
+            width: fit-content;
+            word-break: break-word;
           }
         }
-        video {
-          width: 316px;
-          border-radius: 8px;
-          display: block;
-        }
-        :deep(.audio-box) {
-          width: 300px;
-        }
-        p {
-          margin-top: 8px;
-          border-radius: 8px;
-          background: #f7f8fa;
-          color: #5e5e66;
-          font-size: 14px;
-          line-height: 24px;
-          padding: 8px 12px;
-          text-align: left;
-          &.only-text {
-            color: #131212;
-            padding: 0;
-            font-size: 16px;
-            background: transparent;
+        
+        // AI回复 - 左对齐
+        &.server {
+          .el-image {
+            :deep(.el-image__inner) {
+              width: 24px;
+              height: 24px;
+              margin-right: 12px;
+              margin-top: 6px;
+            }
+          }
+          video {
+            width: 316px;
+            border-radius: 8px;
+            display: block;
+          }
+          :deep(.audio-box) {
+            width: 300px;
+          }
+          p {
+            margin-top: 8px;
+            border-radius: 8px;
+            background: #f7f8fa;
+            color: #5e5e66;
+            font-size: 14px;
+            line-height: 24px;
+            padding: 8px 12px;
+            text-align: left;
+            max-width: 100%;
+            width: fit-content;
+            word-break: break-word;
+            &.only-text {
+              color: #131212;
+              padding: 0;
+              font-size: 16px;
+              background: transparent;
+              max-width: none;
+              width: auto;
+            }
           }
         }
       }
